@@ -1,0 +1,5 @@
+requests[socks]==2.31.0
+beautifulsoup4==4.12.3
+lxml==5.1.0
+PySocks==1.7.1
+urllib3==2.2.1
