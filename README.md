@@ -8,7 +8,6 @@ A Python-based tool for downloading files from Tor hidden services with resume c
 - Resume interrupted downloads using HTTP Range headers
 - Recursive directory crawling
 - Retry logic with exponential backoff
-- Web UI for monitoring and control
 - CLI interface for automation
 
 ## Prerequisites
@@ -88,11 +87,7 @@ python cli.py http://example.onion/path/ -o downloads -r
    - Argument parsing
    - Progress tracking
    - Session persistence
-
-4. **web_ui.py**: Web-based monitoring interface
-   - Real-time status updates
-   - Live log streaming
-   - Progress visualization
+   - Real-time progress display
 
 ## Configuration
 
@@ -163,11 +158,10 @@ tor-parser-demo/
 ├── downloader.py       # Core download logic
 ├── parser.py           # Directory parsing
 ├── cli.py              # CLI interface
-├── web_ui.py           # Web interface
-├── templates/
-│   └── index.html      # Web UI template
 ├── requirements.txt    # Python dependencies
-└── README.md           # Documentation
+├── README.md           # Documentation
+├── QUICK_START.md      # Quick start guide
+└── setup.sh            # Installation script
 ```
 
 ## License
