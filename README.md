@@ -164,6 +164,43 @@ tor-parser-demo/
 └── setup.sh            # Installation script
 ```
 
+## Troubleshooting
+
+### Connection Issues
+
+If you encounter connection errors:
+
+1. Check Tor service status:
+```bash
+sudo systemctl status tor@default
+```
+
+2. Restart Tor if needed:
+```bash
+sudo systemctl restart tor
+```
+
+3. Verify Tor connectivity:
+```bash
+curl --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip
+```
+
+### Slow Download Speed
+
+Tor network speed varies significantly. Typical speeds are 200-500 KB/s. If downloads are extremely slow:
+
+- Try restarting Tor to get a new circuit
+- Check your internet connection
+- Consider downloading during off-peak hours
+
+### Resume Not Working
+
+If resume functionality doesn't work:
+
+- Check that `.progress.json` exists in output directory
+- Verify file permissions on output directory
+- Ensure you're using the same output path
+
 ## License
 
 This project is provided as-is for educational and legitimate use cases only.
