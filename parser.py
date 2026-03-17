@@ -26,17 +26,21 @@ class DirectoryParser:
                 if not href:
                     continue
                 
+                # Skip query parameters and anchors (Apache sorting links)
                 if href.startswith('?') or href.startswith('#'):
                     continue
                 
+                # Skip navigation links
                 if href in ['../', '../', '/', '/secret/']:
                     continue
                 
+                # Skip external links
                 if href.startswith('http') and not href.startswith(url.split('/secret/')[0]):
                     continue
                 
                 full_url = urljoin(url, href)
                 
+                # Classify as directory or file based on trailing slash
                 if href.endswith('/'):
                     directories.append(full_url)
                 else:
