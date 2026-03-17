@@ -76,18 +76,21 @@ class TorDownloader:
     
     def download_with_retry(self, url: str, output_path: str, max_retries: int = 3) -> bool:
         for attempt in range(max_retries):
-            success, message = self.download_file(url, output_path)
-            
-            if success:
-                self.logger.info(f"Downloaded: {url}")
-                return True
-            
-            self.logger.warning(f"Attempt {attempt + 1}/{max_retries} failed: {message}")
-            
-            if attempt < max_retries - 1:
-                wait_time = 2 ** attempt
-                self.logger.info(f"Retrying in {wait_time}s...")
-                time.sleep(wait_time)
+            try:
+                if self.download_file(url, output_path):
+                    return True
+            except requests.exceptions.Timeout as e:
+                self.logger.warning(f"Timeout on attempt {attempt + 1}/{max_retries}: {url}")
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+            except requests.exceptions.ConnectionError as e:
+                self.logger.warning(f"Connection error on attempt {attempt + 1}/{max_retries}: {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+            except Exception as e:
+                self.logger.warning(f"Attempt {attempt + 1}/{max_retries} failed: {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
         
-        self.logger.error(f"Failed to download {url} after {max_retries} attempts")
+        self.logger.error(f"Failed to download after {max_retries} attempts: {url}")
         return False
