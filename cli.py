@@ -57,6 +57,11 @@ def main():
     setup_logging()
     logger = logging.getLogger(__name__)
     
+    # Validate URL format
+    if not args.url.startswith('http://') and not args.url.startswith('https://'):
+        logger.error("URL must start with http:// or https://")
+        return
+    
     os.makedirs(args.output, exist_ok=True)
     progress_file = os.path.join(args.output, '.progress.json')
     
