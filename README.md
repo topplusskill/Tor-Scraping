@@ -9,6 +9,9 @@ A Python-based tool for downloading files from Tor hidden services with resume c
 - Recursive directory crawling
 - Retry logic with exponential backoff
 - CLI interface for automation
+- **Multi-site support**: Lockbit, DragonForce, INC Ransom
+- Auto-detection of site type from URL
+- Site-specific parsers with API support
 
 ## Prerequisites
 
@@ -88,6 +91,13 @@ python cli.py http://example.onion/path/ -o downloads -r
    - Progress tracking
    - Session persistence
    - Real-time progress display
+   - Auto-detection of site type
+
+4. **parsers/**: Site-specific parsing modules
+   - `base.py`: Abstract base class for parsers
+   - `lockbit.py`: Apache-style directory listings
+   - `dragonforce.py`: JWT-authenticated file server
+   - `incransom.py`: API-based with CDN support
 
 ## Configuration
 
@@ -156,8 +166,14 @@ Project structure:
 ```
 tor-parser-demo/
 ├── downloader.py       # Core download logic
-├── parser.py           # Directory parsing
+├── parser.py           # Legacy directory parsing
 ├── cli.py              # CLI interface
+├── parsers/            # Site-specific parsers
+│   ├── __init__.py
+│   ├── base.py         # Abstract base class
+│   ├── lockbit.py      # Lockbit parser
+│   ├── dragonforce.py  # DragonForce parser
+│   └── incransom.py    # INC Ransom parser
 ├── requirements.txt    # Python dependencies
 ├── README.md           # Documentation
 ├── QUICK_START.md      # Quick start guide

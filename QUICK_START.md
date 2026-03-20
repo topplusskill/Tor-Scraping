@@ -7,12 +7,23 @@ Downloads all files from Tor hidden service directories (ransomware leak sites) 
 - Skip already downloaded files
 - Real-time progress tracking
 - Works through Tor for anonymity
+- **Multi-site support**: Lockbit, DragonForce, INC Ransom
 
 **Important**: Leak sites typically have two formats:
 1. **Large archive** (e.g., 261 GB .7z file) - single file, hard to resume
 2. **Unpacked directory** (e.g., /unpack/) - thousands of files, 200+ GB total
 
 This tool is designed for option 2 - downloading unpacked directories file-by-file with resume capability.
+
+## Supported Sites
+
+| Site | URL Pattern | Status |
+|------|-------------|--------|
+| **Lockbit** | `lockbit*.onion` | Fully supported |
+| **INC Ransom** | `incblog*.onion` | Fully supported (API-based) |
+| **DragonForce** | `dragonfor*.onion` | Fully supported (JWT auth) |
+
+Site type is auto-detected from URL, or can be specified manually with `--site-type`.
 
 ## Installation
 
@@ -119,6 +130,41 @@ Options:
   -o, --output DIR       Output directory (default: downloads)
   --max-depth N          Maximum directory depth (default: 10)
   --tor-proxy PROXY      Tor proxy (default: socks5h://127.0.0.1:9050)
+  --site-type TYPE       Site type: auto, lockbit, dragonforce, incransom (default: auto)
+  --password PASS        Password for protected disclosures (INC Ransom only)
+```
+
+## Site-Specific Examples
+
+### Lockbit (Apache-style directory listing)
+```bash
+python3 cli.py \
+  "http://lockbitwnklgh3lt6umrbiztgzl6qujtovdtcovdjhavepp7bpvcmfid.onion/secret/.../company.com/unpack/" \
+  -o /data/lockbit-leak
+```
+
+### DragonForce (JWT-authenticated file server)
+```bash
+python3 cli.py \
+  "http://dragonforxxbp3awc7mzs5dkswrua3znqyx5roefmi4smjrsdi22xwqd.onion/company.com" \
+  -o /data/dragonforce-leak \
+  --site-type dragonforce
+```
+
+### INC Ransom (API-based with optional password)
+```bash
+# Public disclosure
+python3 cli.py \
+  "http://incblog6qu4y4mm4zvw5nrmue6qbwtgjsxpw6b7ixzssu36tsajldoad.onion/blog/disclosures/68001f58516e69ca61f381d6" \
+  -o /data/inc-leak \
+  --site-type incransom
+
+# Password-protected disclosure
+python3 cli.py \
+  "http://incblog6qu4y4mm4zvw5nrmue6qbwtgjsxpw6b7ixzssu36tsajldoad.onion/blog/disclosures/..." \
+  -o /data/inc-leak \
+  --site-type incransom \
+  --password "secret123"
 ```
 
 ## Progress Tracking
