@@ -8,6 +8,8 @@ Downloads all files from Tor hidden service directories (ransomware leak sites) 
 - Real-time progress tracking
 - Works through Tor for anonymity
 - **Multi-site support**: Lockbit, DragonForce, INC Ransom
+- **Google Drive upload**: Direct upload via service account with retry and verification
+- **Batch mode**: Download from all targets in parallel via `run_all.py`
 
 **Important**: Leak sites typically have two formats:
 1. **Large archive** (e.g., 261 GB .7z file) - single file, hard to resume
@@ -34,6 +36,9 @@ sudo systemctl start tor
 
 # Install Python dependencies
 pip3 install --break-system-packages requests beautifulsoup4 lxml PySocks
+
+# For Google Drive sync
+pip3 install --break-system-packages google-api-python-client google-auth google-auth-httplib2
 ```
 
 ## Basic Usage
@@ -132,6 +137,12 @@ Options:
   --tor-proxy PROXY      Tor proxy (default: socks5h://127.0.0.1:9050)
   --site-type TYPE       Site type: auto, lockbit, dragonforce, incransom (default: auto)
   --password PASS        Password for protected disclosures (INC Ransom only)
+
+Google Drive options:
+  --gdrive-sa FILE       Path to service account JSON key
+  --gdrive-user EMAIL    Email to impersonate for upload
+  --gdrive-folder ID     Google Drive folder ID to upload to
+  --keep-local           Keep local copy after uploading (default: delete)
 ```
 
 ## Site-Specific Examples
@@ -260,6 +271,52 @@ Everything in the directory structure:
 - Your IP is hidden from the target site
 - Files are saved locally only
 - No data is sent anywhere else
+
+## Google Drive Upload
+
+Upload files directly to Google Drive as they download (no local copy kept):
+
+```bash
+python3 cli.py \
+  "http://dragonforxxbp3awc7mzs5dkswrua3znqyx5roefmi4smjrsdi22xwqd.onion/company.com" \
+  -o /tmp/dragonforce-leak \
+  --site-type dragonforce \
+  --gdrive-sa t-momentum-490715-v1-b3d0afdd706e.json \
+  --gdrive-user developer@vaillen.online \
+  --gdrive-folder 1cJ2DuQfsWcFr2IzFgJjEw-tu9c67wv9P
+```
+
+Requires:
+1. Google Cloud service account with domain-wide delegation enabled
+2. Google Workspace admin must authorize client ID with scope `https://www.googleapis.com/auth/drive`
+3. Shared folder accessible to the impersonated user
+
+## Batch Mode (run_all.py)
+
+All targets are defined in `targets.json`. Download everything in parallel:
+
+```bash
+# Start all targets in separate tmux sessions
+python3 run_all.py
+
+# Check status
+python3 run_all.py --status
+
+# Stop all
+python3 run_all.py --stop
+
+# Attach to specific session
+tmux attach -t dl-dragonforce-hartmann-bau
+```
+
+Add new targets to `targets.json`:
+```json
+{
+  "name": "new-target",
+  "site_type": "dragonforce",
+  "url": "http://dragonfor...onion/company.com"
+}
+```
 
 ## For Automation
 

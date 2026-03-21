@@ -29,3 +29,15 @@ progress.json
 .DS_Store
 .vscode/
 .idea/
+
+# Service account keys (NEVER commit)
+*.json
+!targets.json
+!package.json
+
+# HAR files
+*.har
+
+# Temp/test
+test_downloads/
+Untitled-*
