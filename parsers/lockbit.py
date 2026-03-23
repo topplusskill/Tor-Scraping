@@ -15,6 +15,9 @@ class LockbitParser(BaseParser):
     
     SITE_NAME = "lockbit"
     
+    # Directories to skip — we only need archives, not unpacked contents
+    SKIP_DIRS = {'unpack/', 'unpack'}
+    
     def parse_directory(self, url: str, **kwargs) -> Dict[str, List[str]]:
         """
         Parse Apache-style directory listing.
@@ -51,6 +54,9 @@ class LockbitParser(BaseParser):
                 
                 # Classify as directory or file based on trailing slash
                 if href.endswith('/'):
+                    if href in self.SKIP_DIRS:
+                        self.logger.info(f"Skipping directory: {href}")
+                        continue
                     directories.append(full_url)
                 else:
                     files.append(full_url)

@@ -1,5 +1,6 @@
 import logging
 import json
+import time
 from typing import List, Dict, Optional
 from urllib.parse import urljoin, urlparse, unquote
 import requests
@@ -281,18 +282,15 @@ class INCRansomParser(BaseParser):
         
         return f"{self.cdn_url}/api/v1/blog/get/file"
     
+    DOWNLOAD_MAX_RETRIES = 3
+    DOWNLOAD_BACKOFF = 5  # seconds
+    
     def download_file(self, file_info: dict, output_path: str) -> bool:
         """
-        Download a file from INC Ransom CDN.
+        Download a file from INC Ransom CDN with retry on transient failures.
         
         API expects: {"disclosureId": "...", "path": "./path/to/file.xlsx"}
-        
-        Args:
-            file_info: File information dict with path
-            output_path: Local path to save file
-            
-        Returns:
-            True if successful
+        Retries on timeout/connection errors with exponential backoff.
         """
         import os
         
@@ -302,43 +300,59 @@ class INCRansomParser(BaseParser):
         
         file_path = file_info.get('path', '')
         file_name = file_info.get('name', os.path.basename(file_path))
+        expected_size = file_info.get('size', 0)
         
-        try:
-            api_endpoint = f"{self.cdn_url}/api/v1/blog/get/file"
-            
-            payload = {
-                'disclosureId': self.disclosure_id,
-                'path': file_path
-            }
-            
-            self.logger.info(f"Downloading: {file_name}")
-            response = self.session.post(
-                api_endpoint,
-                json=payload,
-                timeout=300,
-                stream=True
-            )
-            response.raise_for_status()
-            
-            # Create directory if needed
-            dir_path = os.path.dirname(output_path)
-            if dir_path:
-                os.makedirs(dir_path, exist_ok=True)
-            
-            # Stream to file
-            total_size = 0
-            with open(output_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-                        total_size += len(chunk)
-            
-            self.logger.info(f"Downloaded {file_name}: {total_size} bytes")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to download file: {str(e)}")
-            return False
+        for attempt in range(self.DOWNLOAD_MAX_RETRIES):
+            try:
+                api_endpoint = f"{self.cdn_url}/api/v1/blog/get/file"
+                
+                payload = {
+                    'disclosureId': self.disclosure_id,
+                    'path': file_path
+                }
+                
+                self.logger.info(f"Downloading: {file_name}")
+                response = self.session.post(
+                    api_endpoint,
+                    json=payload,
+                    timeout=(60, None),
+                    stream=True
+                )
+                response.raise_for_status()
+                
+                dir_path = os.path.dirname(output_path)
+                if dir_path:
+                    os.makedirs(dir_path, exist_ok=True)
+                
+                total_size = 0
+                with open(output_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=65536):
+                        if chunk:
+                            f.write(chunk)
+                            total_size += len(chunk)
+                
+                # Verify size if known
+                if expected_size and total_size != expected_size:
+                    self.logger.warning(
+                        f"Size mismatch {file_name}: got {total_size}, expected {expected_size}"
+                    )
+                
+                self.logger.info(f"Downloaded {file_name}: {total_size} bytes")
+                return True
+                
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                backoff = self.DOWNLOAD_BACKOFF * (2 ** attempt)
+                self.logger.warning(
+                    f"Download failed ({attempt + 1}/{self.DOWNLOAD_MAX_RETRIES}): {e}, "
+                    f"retrying in {backoff}s..."
+                )
+                time.sleep(backoff)
+            except Exception as e:
+                self.logger.error(f"Failed to download {file_name}: {str(e)}")
+                return False
+        
+        self.logger.error(f"Download failed after {self.DOWNLOAD_MAX_RETRIES} retries: {file_name}")
+        return False
     
     def crawl_recursive(self, base_url: str, max_depth: int = 10, **kwargs) -> List[dict]:
         """

@@ -3,6 +3,7 @@ import logging
 import os
 import json
 import sys
+import shutil
 from datetime import datetime
 from downloader import TorDownloader
 from parser import DirectoryParser
@@ -118,15 +119,20 @@ def main():
     
     # Mount Google Drive if requested
     gdrive_mount = None
+    gdrive_output = None
+    local_output = args.output
     if args.mount_gdrive:
         from cloud_sync import GDriveMount
         gdrive_mount = GDriveMount()
         if not gdrive_mount.ensure_mounted():
             logger.error("Failed to mount Google Drive. Check rclone config.")
             return
-        args.output = os.path.join(gdrive_mount.path, args.output)
-        logger.info(f"Google Drive mounted. Output: {args.output}")
+        gdrive_output = os.path.join(gdrive_mount.path, args.output)
+        os.makedirs(gdrive_output, exist_ok=True)
+        local_output = os.path.join('/tmp', f"tor-local-{args.output}")
+        logger.info(f"GDrive mounted. Download local -> {local_output}, then copy -> {gdrive_output}")
     
+    args.output = local_output
     os.makedirs(args.output, exist_ok=True)
     progress_file = os.path.join(args.output, '.progress.json')
     
@@ -219,9 +225,18 @@ def main():
                 download_success = downloader.download_with_retry(file_url, output_path)
             
             if download_success:
-                # Health-check GDrive mount periodically
-                if gdrive_mount and not gdrive_mount.ensure_mounted():
-                    logger.error("GDrive mount lost, attempting recovery...")
+                # Copy to GDrive mount if configured
+                if gdrive_mount and gdrive_output:
+                    if not gdrive_mount.ensure_mounted():
+                        logger.error("GDrive mount lost, attempting recovery...")
+                    else:
+                        gdrive_path = os.path.join(gdrive_output, relative_path)
+                        os.makedirs(os.path.dirname(gdrive_path), exist_ok=True)
+                        try:
+                            shutil.copy2(output_path, gdrive_path)
+                            logger.info(f"Copied to GDrive: {relative_path}")
+                        except Exception as e:
+                            logger.error(f"Failed to copy to GDrive: {e}")
                 
                 success_count += 1
                 downloaded.add(file_id)
