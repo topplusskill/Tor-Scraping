@@ -1,9 +1,4 @@
 {
-  "gdrive": {
-    "service_account": "t-momentum-490715-v1-b3d0afdd706e.json",
-    "impersonate_user": "developer@vaillen.online",
-    "folder_id": "1cJ2DuQfsWcFr2IzFgJjEw-tu9c67wv9P"
-  },
   "targets": [
     {
       "name": "dragonforce-hartmann-bau",

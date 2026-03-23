@@ -1,8 +1,10 @@
 import logging
 import re
 import json
+import time
+import base64
 from typing import List, Dict, Optional
-from urllib.parse import urljoin, urlparse, parse_qs, unquote
+from urllib.parse import urljoin, urlparse, parse_qs, unquote, quote
 from bs4 import BeautifulSoup
 import requests
 
@@ -39,13 +41,17 @@ class DragonForceParser(BaseParser):
         "fsguestuctexqqaoxuahuydfa6ovxuhtng66pgyr5gqcrsi7qgchpkad.onion",  # Old, often offline
     ]
     
+    # Refresh token 5 minutes before expiry
+    TOKEN_REFRESH_MARGIN = 300
+    
     def __init__(self, session: requests.Session):
         super().__init__(session)
         self.file_server_url = None
         self.token = None
+        self.token_exp = 0
         self.deploy_uuid = None
         self.main_site_url = None
-        self.website = None  # Victim domain from JWT
+        self.website = None
     
     def _extract_iframe_info(self, url: str) -> Optional[Dict]:
         """
@@ -79,28 +85,29 @@ class DragonForceParser(BaseParser):
                 self.logger.error("No token found in iframe URL")
                 return None
             
-            # Decode JWT payload to get deploy_uuid
+            # Decode JWT payload to get deploy_uuid and expiry
+            token_exp = 0
+            deploy_uuid = None
             try:
-                # JWT is base64 encoded, split by dots
                 payload_b64 = token.split('.')[1]
-                # Add padding if needed
                 padding = 4 - len(payload_b64) % 4
                 if padding != 4:
                     payload_b64 += '=' * padding
                 
-                import base64
                 payload = json.loads(base64.urlsafe_b64decode(payload_b64))
                 deploy_uuid = payload.get('deploy_uuid')
+                token_exp = payload.get('exp', 0)
+                self.logger.info(f"Token expires at {token_exp} (in {token_exp - time.time():.0f}s)")
             except Exception as e:
                 self.logger.warning(f"Could not decode JWT: {e}")
-                deploy_uuid = None
             
             file_server_url = f"{parsed.scheme}://{parsed.netloc}"
             
             return {
                 'file_server_url': file_server_url,
                 'token': token,
-                'deploy_uuid': deploy_uuid
+                'deploy_uuid': deploy_uuid,
+                'token_exp': token_exp
             }
             
         except Exception as e:
@@ -109,16 +116,13 @@ class DragonForceParser(BaseParser):
     
     def _ensure_token(self, main_url: str) -> bool:
         """
-        Ensure we have a valid token for the file server.
-        
-        Args:
-            main_url: Main DragonForce page URL
-            
-        Returns:
-            True if token is available
+        Ensure we have a valid (non-expired) token for the file server.
+        Automatically refreshes token if it's about to expire.
         """
         if self.token and self.file_server_url:
-            return True
+            if self.token_exp and time.time() < (self.token_exp - self.TOKEN_REFRESH_MARGIN):
+                return True
+            self.logger.info("Token expired or expiring soon, refreshing...")
         
         info = self._extract_iframe_info(main_url)
         if not info:
@@ -127,6 +131,7 @@ class DragonForceParser(BaseParser):
         self.file_server_url = info['file_server_url']
         self.token = info['token']
         self.deploy_uuid = info['deploy_uuid']
+        self.token_exp = info.get('token_exp', 0)
         
         return True
     
@@ -150,8 +155,6 @@ class DragonForceParser(BaseParser):
         try:
             # DragonForce file server uses simple GET with query params
             # URL format: /?path=...&token=JWT
-            from urllib.parse import quote
-            
             list_url = f"{self.file_server_url}/?path={quote(path)}&token={self.token}"
             
             self.logger.info(f"Listing directory: {path}")
@@ -218,62 +221,69 @@ class DragonForceParser(BaseParser):
         if not self.file_server_url or not self.token:
             return ''
         
-        from urllib.parse import quote
         file_path = file_info.get('path', '')
         return f"{self.file_server_url}/download?path={quote(file_path)}&token={self.token}"
     
+    DOWNLOAD_MAX_RETRIES = 3
+    DOWNLOAD_BACKOFF = 5  # seconds
+    
     def download_file(self, file_info: dict, output_path: str) -> bool:
         """
-        Download a file from DragonForce.
+        Download a file from DragonForce with retry on transient failures.
         
         Uses simple GET request: /download?path=...&token=JWT
-        
-        Args:
-            file_info: File information dict with path
-            output_path: Local path to save file
-            
-        Returns:
-            True if successful
+        Retries on timeout/connection errors with exponential backoff.
         """
         import os
         
-        if not self.file_server_url or not self.token:
-            self.logger.error("No authentication token available")
-            return False
-        
         file_path = file_info.get('path', '')
         file_name = file_info.get('name', os.path.basename(file_path))
+        main_url = file_info.get('main_url', '')
         
-        try:
-            download_url = self.get_download_url(file_info)
+        for attempt in range(self.DOWNLOAD_MAX_RETRIES):
+            # Refresh token if needed before each attempt
+            if not self._ensure_token(main_url):
+                self.logger.error("No authentication token available")
+                return False
             
-            self.logger.info(f"Downloading: {file_name}")
-            response = self.session.get(
-                download_url,
-                timeout=300,
-                stream=True
-            )
-            response.raise_for_status()
-            
-            # Create directory if needed
-            dir_path = os.path.dirname(output_path)
-            if dir_path:
-                os.makedirs(dir_path, exist_ok=True)
-            
-            # Stream to file
-            total_size = 0
-            with open(output_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-                        total_size += len(chunk)
-            
-            self.logger.info(f"Downloaded {file_name}: {total_size} bytes")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to download file: {str(e)}")
-            return False
+            try:
+                download_url = self.get_download_url(file_info)
+                
+                self.logger.info(f"Downloading: {file_name}")
+                response = self.session.get(
+                    download_url,
+                    timeout=300,
+                    stream=True
+                )
+                response.raise_for_status()
+                
+                dir_path = os.path.dirname(output_path)
+                if dir_path:
+                    os.makedirs(dir_path, exist_ok=True)
+                
+                total_size = 0
+                with open(output_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            total_size += len(chunk)
+                
+                self.logger.info(f"Downloaded {file_name}: {total_size} bytes")
+                return True
+                
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                backoff = self.DOWNLOAD_BACKOFF * (2 ** attempt)
+                self.logger.warning(
+                    f"Download failed ({attempt + 1}/{self.DOWNLOAD_MAX_RETRIES}): {e}, "
+                    f"retrying in {backoff}s..."
+                )
+                time.sleep(backoff)
+            except Exception as e:
+                self.logger.error(f"Failed to download {file_name}: {str(e)}")
+                return False
+        
+        self.logger.error(f"Download failed after {self.DOWNLOAD_MAX_RETRIES} retries: {file_name}")
+        return False
     
     def crawl_recursive(self, base_url: str, max_depth: int = 10, **kwargs) -> List[dict]:
         """

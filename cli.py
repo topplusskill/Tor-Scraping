@@ -3,7 +3,6 @@ import logging
 import os
 import json
 import sys
-import tempfile
 from datetime import datetime
 from downloader import TorDownloader
 from parser import DirectoryParser
@@ -104,16 +103,8 @@ def main():
                         default='auto', help='Site type (auto-detected if not specified)')
     parser.add_argument('--password', default=None, help='Password for protected disclosures (INC Ransom)')
     parser.add_argument('--cookies', default=None, help='Path to cookies file for CAPTCHA bypass (JSON or Netscape format)')
-    
-    # Google Drive sync options
-    parser.add_argument('--gdrive-sa', default=None,
-                        help='Path to Google Drive service account JSON key')
-    parser.add_argument('--gdrive-user', default=None,
-                        help='Email to impersonate for Google Drive upload')
-    parser.add_argument('--gdrive-folder', default=None,
-                        help='Google Drive folder ID to upload to')
-    parser.add_argument('--keep-local', action='store_true', default=False,
-                        help='Keep local copy after uploading to Google Drive')
+    parser.add_argument('--mount-gdrive', action='store_true', default=False,
+                        help='Mount Google Drive via rclone and write directly to it')
     
     args = parser.parse_args()
     
@@ -125,25 +116,16 @@ def main():
         logger.error("URL must start with http:// or https://")
         return
     
-    # Initialize Google Drive sync if configured
-    gdrive_sync = None
-    if args.gdrive_sa and args.gdrive_user and args.gdrive_folder:
-        try:
-            from cloud_sync import GoogleDriveSync
-            gdrive_sync = GoogleDriveSync(
-                service_account_file=args.gdrive_sa,
-                impersonate_user=args.gdrive_user,
-                root_folder_id=args.gdrive_folder
-            )
-            logger.info(f"Google Drive sync enabled → folder {args.gdrive_folder}")
-            if not args.keep_local:
-                logger.info("Local files will be deleted after upload (use --keep-local to keep)")
-        except Exception as e:
-            logger.error(f"Failed to initialize Google Drive sync: {e}")
-            logger.error("Continuing with local download only")
-    elif any([args.gdrive_sa, args.gdrive_user, args.gdrive_folder]):
-        logger.error("All three --gdrive-sa, --gdrive-user, --gdrive-folder are required for GDrive sync")
-        return
+    # Mount Google Drive if requested
+    gdrive_mount = None
+    if args.mount_gdrive:
+        from cloud_sync import GDriveMount
+        gdrive_mount = GDriveMount()
+        if not gdrive_mount.ensure_mounted():
+            logger.error("Failed to mount Google Drive. Check rclone config.")
+            return
+        args.output = os.path.join(gdrive_mount.path, args.output)
+        logger.info(f"Google Drive mounted. Output: {args.output}")
     
     os.makedirs(args.output, exist_ok=True)
     progress_file = os.path.join(args.output, '.progress.json')
@@ -237,24 +219,9 @@ def main():
                 download_success = downloader.download_with_retry(file_url, output_path)
             
             if download_success:
-                # Upload to Google Drive if configured
-                if gdrive_sync:
-                    upload_ok = gdrive_sync.upload_file(output_path, relative_path)
-                    if upload_ok and not args.keep_local:
-                        try:
-                            os.remove(output_path)
-                            # Clean up empty parent directories
-                            parent = os.path.dirname(output_path)
-                            while parent != args.output:
-                                if os.path.isdir(parent) and not os.listdir(parent):
-                                    os.rmdir(parent)
-                                    parent = os.path.dirname(parent)
-                                else:
-                                    break
-                        except OSError:
-                            pass
-                    elif not upload_ok:
-                        logger.warning(f"GDrive upload failed, local copy kept: {relative_path}")
+                # Health-check GDrive mount periodically
+                if gdrive_mount and not gdrive_mount.ensure_mounted():
+                    logger.error("GDrive mount lost, attempting recovery...")
                 
                 success_count += 1
                 downloaded.add(file_id)
@@ -283,8 +250,8 @@ def main():
     print(f"Skipped: {skipped_count}")
     print(f"Failed: {failed_count}")
     
-    if gdrive_sync:
-        print(f"\n{gdrive_sync.get_stats_summary()}")
+    if gdrive_mount:
+        print(f"\nFiles saved to Google Drive via {gdrive_mount.path}")
 
 
 if __name__ == '__main__':
