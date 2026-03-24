@@ -44,8 +44,8 @@ class DragonForceParser(BaseParser):
     # Refresh token 5 minutes before expiry
     TOKEN_REFRESH_MARGIN = 300
     
-    def __init__(self, session: requests.Session):
-        super().__init__(session)
+    def __init__(self, session: requests.Session, **kwargs):
+        super().__init__(session, **kwargs)
         self.file_server_url = None
         self.token = None
         self.token_exp = 0

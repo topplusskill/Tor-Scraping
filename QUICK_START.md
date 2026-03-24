@@ -8,14 +8,13 @@ Downloads all files from Tor hidden service directories (ransomware leak sites) 
 - Real-time progress tracking
 - Works through Tor for anonymity
 - **Multi-site support**: Lockbit, DragonForce, INC Ransom
-- **Google Drive upload**: Direct upload via service account with retry and verification
+- **Google Drive sync**: Download locally first, then sync to rclone-mounted GDrive
 - **Batch mode**: Download from all targets in parallel via `run_all.py`
+- **Centralized config**: All constants in `config.py`, shared helpers in `utils.py`
 
-**Important**: Leak sites typically have two formats:
-1. **Large archive** (e.g., 261 GB .7z file) - single file, hard to resume
-2. **Unpacked directory** (e.g., /unpack/) - thousands of files, 200+ GB total
-
-This tool is designed for option 2 - downloading unpacked directories file-by-file with resume capability.
+**Download strategy**: Files are downloaded to local `/tmp/` first for speed,
+then copied to the rclone-mounted Google Drive folder. This avoids issues with
+mount instability during long Tor downloads.
 
 ## Supported Sites
 
@@ -139,10 +138,7 @@ Options:
   --password PASS        Password for protected disclosures (INC Ransom only)
 
 Google Drive options:
-  --gdrive-sa FILE       Path to service account JSON key
-  --gdrive-user EMAIL    Email to impersonate for upload
-  --gdrive-folder ID     Google Drive folder ID to upload to
-  --keep-local           Keep local copy after uploading (default: delete)
+  --mount-gdrive         Download locally, copy to rclone-mounted GDrive
 ```
 
 ## Site-Specific Examples
@@ -272,24 +268,26 @@ Everything in the directory structure:
 - Files are saved locally only
 - No data is sent anywhere else
 
-## Google Drive Upload
+## Google Drive Sync (rclone mount)
 
-Upload files directly to Google Drive as they download (no local copy kept):
+Download via Tor to local disk, then sync to GDrive:
 
 ```bash
+# Option 1: Automatic via CLI flag
 python3 cli.py \
-  "http://dragonforxxbp3awc7mzs5dkswrua3znqyx5roefmi4smjrsdi22xwqd.onion/company.com" \
-  -o /tmp/dragonforce-leak \
+  "http://dragonfor...onion/company.com" \
+  -o dragonforce-leak \
   --site-type dragonforce \
-  --gdrive-sa t-momentum-490715-v1-b3d0afdd706e.json \
-  --gdrive-user developer@vaillen.online \
-  --gdrive-folder 1cJ2DuQfsWcFr2IzFgJjEw-tu9c67wv9P
+  --mount-gdrive
+
+# Option 2: Manual upload after download
+rclone copy /tmp/tor-local-dragonforce-leak/ gdrive:dragonforce-leak/ --progress
 ```
 
 Requires:
-1. Google Cloud service account with domain-wide delegation enabled
-2. Google Workspace admin must authorize client ID with scope `https://www.googleapis.com/auth/drive`
-3. Shared folder accessible to the impersonated user
+1. rclone configured with Google Drive remote (`rclone config`)
+2. Service account JSON with domain-wide delegation
+3. `impersonate` set in `~/.config/rclone/rclone.conf`
 
 ## Batch Mode (run_all.py)
 

@@ -41,3 +41,9 @@ progress.json
 # Temp/test
 test_downloads/
 Untitled-*
+
+# rclone
+rclone-mount.log
+
+# Local download cache
+/tmp/tor-local-*/

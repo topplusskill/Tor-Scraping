@@ -1,222 +1,207 @@
-# Tor Parser Demo
+# Tor Parser
 
-A Python-based tool for downloading files from Tor hidden services with resume capability and fault tolerance.
+A robust Python CLI tool for downloading files from Tor hidden services (.onion)
+with automatic resume, fault tolerance, and Google Drive synchronization via rclone.
 
 ## Features
 
-- SOCKS5 proxy support for Tor network
-- Resume interrupted downloads using HTTP Range headers
-- Recursive directory crawling
-- Retry logic with exponential backoff
-- CLI interface for automation
-- **Multi-site support**: Lockbit, DragonForce, INC Ransom
-- Auto-detection of site type from URL
-- Site-specific parsers with API support
+- **Multi-site support** — Lockbit, DragonForce, INC Ransom with site-specific parsers
+- **Resume large downloads** — HTTP Range-based resume survives connection drops (261 GB+ tested)
+- **Retry with backoff** — exponential backoff up to 50 attempts per file
+- **Google Drive sync** — download locally, then copy to rclone-mounted GDrive folder
+- **Batch mode** — run all targets in parallel tmux sessions via `run_all.py`
+- **Auto-detection** — site type inferred from URL pattern
+- **Progress tracking** — real-time CLI output + JSON progress persistence
+- **Centralized config** — all constants in `config.py`, environment variable overrides
+
+## Supported Sites
+
+| Site | Parser | Auth | Notes |
+|------|--------|------|-------|
+| **Lockbit** | `LockbitParser` | None | Apache-style directory listing. Skips `unpack/` by default. |
+| **DragonForce** | `DragonForceParser` | JWT (auto) | Token extracted from iframe, auto-refreshed before expiry. |
+| **INC Ransom** | `INCRansomParser` | API + CDN | REST API backend, optional password, CAPTCHA bypass via cookies. |
 
 ## Prerequisites
 
 - Python 3.8+
-- Tor service running on localhost:9050
+- Tor service on `localhost:9050`
+- rclone (for Google Drive sync)
 
 ## Installation
 
-### 1. Install Tor
-
 ```bash
-sudo apt update
-sudo apt install tor
-sudo systemctl start tor
-sudo systemctl enable tor
+# System
+sudo apt update && sudo apt install -y tor rclone
+sudo systemctl enable --now tor
+
+# Python
+pip3 install requests beautifulsoup4 lxml PySocks
 ```
 
-Verify Tor is running:
+## Quick Start
+
+### Single target
 ```bash
-sudo systemctl status tor
+python3 cli.py "http://lockbit...onion/secret/.../company.com/" -o lockbit-data
 ```
 
-### 2. Install Python dependencies
-
+### With Google Drive mount
 ```bash
-pip install -r requirements.txt
+python3 cli.py "http://lockbit...onion/secret/.../company.com/" \
+  -o lockbit-data \
+  --mount-gdrive
 ```
 
-## Usage
+This downloads to `/tmp/tor-local-lockbit-data/` first, then copies each file
+to `/mnt/gdrive/lockbit-data/` after successful download.
 
-### CLI
-
-Basic usage:
-
+### Batch mode (all targets)
 ```bash
-python cli.py http://example.onion/path/ -o downloads
+python3 run_all.py                  # start all targets in tmux
+python3 run_all.py --status         # check progress
+python3 run_all.py --only NAME      # run single target
+python3 run_all.py --stop           # stop all
 ```
+
+## CLI Reference
+
+```
+python3 cli.py <URL> [options]
+
+Required:
+  URL                        Target .onion URL
 
 Options:
-- `-o, --output`: Output directory (default: downloads)
-- `-r, --resume`: Resume from previous run
-- `--max-depth`: Maximum recursion depth (default: 10)
-- `--tor-proxy`: Tor SOCKS5 proxy (default: socks5h://127.0.0.1:9050)
-
-Example with all options:
-
-```bash
-python cli.py http://example.onion/path/ \
-  -o /path/to/downloads \
-  --max-depth 5 \
-  --tor-proxy socks5h://127.0.0.1:9050
-```
-
-Resume interrupted download:
-
-```bash
-python cli.py http://example.onion/path/ -o downloads -r
+  -o, --output DIR           Output directory (default: downloads)
+  --max-depth N              Max directory recursion depth (default: 10)
+  --tor-proxy URL            Tor SOCKS5 proxy (default: socks5h://127.0.0.1:9050)
+  --site-type TYPE           auto | lockbit | dragonforce | incransom
+  --password PASS            Password for protected disclosures (INC Ransom)
+  --cookies FILE             Cookies file for CAPTCHA bypass (JSON or Netscape)
+  --mount-gdrive             Download locally, then copy to rclone-mounted GDrive
 ```
 
 ## Architecture
 
-### Core Components
+```
+tor-parser-demo/
+├── cli.py                  # CLI entry point
+├── config.py               # Centralized constants and tunables
+├── utils.py                # Shared helpers (formatting, hashing, rate limiting)
+├── downloader.py           # Tor download engine with resume + retry
+├── cloud_sync.py           # rclone mount lifecycle management
+├── parser.py               # Legacy directory parser (backward compat)
+├── run_all.py              # Batch runner — parallel tmux sessions
+├── targets.json            # Target definitions for batch mode
+├── parsers/
+│   ├── __init__.py         # Parser registry
+│   ├── base.py             # Abstract base class
+│   ├── lockbit.py          # Apache directory listing (skips unpack/)
+│   ├── dragonforce.py      # JWT auth + file server API
+│   └── incransom.py        # REST API + CDN downloads
+├── CHANGELOG.md            # Version history
+├── QUICK_START.md          # Hands-on guide
+└── requirements.txt        # Python dependencies
+```
 
-1. **downloader.py**: Handles file downloads with resume capability
-   - Creates Tor session with SOCKS5 proxy
-   - Implements chunked streaming downloads
-   - Supports HTTP Range headers for resume
-   - Retry logic with exponential backoff
+### Data Flow
 
-2. **parser.py**: Parses directory structures
-   - Extracts file and directory links
-   - Recursive crawling with depth limit
-   - Filters navigation elements
+```
+┌─────────────┐     Tor/SOCKS5     ┌──────────────┐
+│  .onion     │ ◄───────────────── │  cli.py       │
+│  site       │ ──────────────────►│  + parser     │
+└─────────────┘    crawl / download└──────┬───────┘
+                                          │
+                          ┌───────────────┼───────────────┐
+                          ▼               ▼               ▼
+                    /tmp/tor-local-*   .progress.json   logs
+                          │
+                    shutil.copy2
+                          │
+                          ▼
+                    /mnt/gdrive/*  (rclone mount)
+                          │
+                    Google Drive
+```
 
-3. **cli.py**: Command-line interface
-   - Argument parsing
-   - Progress tracking
-   - Session persistence
-   - Real-time progress display
-   - Auto-detection of site type
+### Key Modules
 
-4. **parsers/**: Site-specific parsing modules
-   - `base.py`: Abstract base class for parsers
-   - `lockbit.py`: Apache-style directory listings
-   - `dragonforce.py`: JWT-authenticated file server
-   - `incransom.py`: API-based with CDN support
+- **`config.py`** — all timeouts, chunk sizes, mount paths, site-specific constants
+- **`utils.py`** — `fmt_size()`, `fmt_duration()`, `file_sha256()`, `RateLimiter`, `Timer`
+- **`downloader.py`** — `TorDownloader` with `(120s, ∞)` timeout, 256KB chunks, resume loop
+- **`cloud_sync.py`** — `GDriveMount` class: auto-mount, health check, remount on failure
+- **`parsers/base.py`** — `BaseParser` ABC with `parse_directory()`, `get_download_url()`, `crawl_recursive()`
+
+## Google Drive via rclone
+
+### Setup
+
+```bash
+# Configure rclone with service account
+rclone config
+# → New remote: gdrive
+# → Type: Google Drive
+# → Service account file: /path/to/sa.json
+# → Impersonate: user@domain.com
+# → Root folder ID: <shared folder ID>
+```
+
+### How it works
+
+1. `run_all.py` (or `--mount-gdrive`) mounts `gdrive:` at `/mnt/gdrive`
+2. Files download to `/tmp/tor-local-<target>/` first (fast local I/O)
+3. After each file completes, `shutil.copy2` copies it to `/mnt/gdrive/<target>/`
+4. Mount health is checked periodically; auto-remount on failure
+
+### Manual upload (if mount was lost)
+
+```bash
+rclone copy /tmp/tor-local-lockbit-kioti/ gdrive:lockbit-kioti/ --progress
+```
 
 ## Configuration
 
-### Tor Settings
+All constants live in `config.py` and can be overridden via environment:
 
-Default Tor SOCKS5 proxy: `127.0.0.1:9050`
-
-To use a different port, edit `/etc/tor/torrc`:
-
-```
-SocksPort 9050
-```
-
-Restart Tor after changes:
-
-```bash
-sudo systemctl restart tor
-```
-
-### Download Settings
-
-Edit in code or pass as CLI arguments:
-- Timeout: 60 seconds (default)
-- Chunk size: 8192 bytes
-- Max retries: 3-5 attempts
-- Backoff factor: 2x
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TOR_PROXY` | `socks5h://127.0.0.1:9050` | Tor SOCKS5 proxy URL |
+| `GDRIVE_MOUNT` | `/mnt/gdrive` | rclone mount point |
+| `RCLONE_REMOTE` | `gdrive:` | rclone remote name |
 
 ## Troubleshooting
 
-### Tor connection failed
-
-Check Tor service:
-```bash
-sudo systemctl status tor
-```
-
-Test Tor connectivity:
-```bash
-curl --socks5-hostname 127.0.0.1:9050 https://check.torproject.org
-```
-
-### Downloads timing out
-
-Increase timeout in `downloader.py`:
-```python
-TorDownloader(timeout=120)
-```
-
-### Permission errors
-
-Ensure output directory is writable:
-```bash
-chmod 755 downloads
-```
-
-## Security Notes
-
-- This tool is designed for legitimate data recovery and archival purposes
-- Always verify you have authorization to download content
-- Tor provides anonymity but not complete security
-- Use responsibly and in compliance with applicable laws
-
-## Development
-
-Project structure:
-```
-tor-parser-demo/
-├── downloader.py       # Core download logic
-├── parser.py           # Legacy directory parsing
-├── cli.py              # CLI interface
-├── parsers/            # Site-specific parsers
-│   ├── __init__.py
-│   ├── base.py         # Abstract base class
-│   ├── lockbit.py      # Lockbit parser
-│   ├── dragonforce.py  # DragonForce parser
-│   └── incransom.py    # INC Ransom parser
-├── requirements.txt    # Python dependencies
-├── README.md           # Documentation
-├── QUICK_START.md      # Quick start guide
-└── setup.sh            # Installation script
-```
-
-## Troubleshooting
-
-### Connection Issues
-
-If you encounter connection errors:
-
-1. Check Tor service status:
-```bash
-sudo systemctl status tor@default
-```
-
-2. Restart Tor if needed:
+### Tor connection failed / TTL expired
 ```bash
 sudo systemctl restart tor
+# Wait 10-15 seconds for circuits to rebuild
 ```
 
-3. Verify Tor connectivity:
+### Download stuck at same percentage
+The .onion site may be throttling or overloaded. The downloader will keep
+retrying with exponential backoff (up to 50 attempts). Restart Tor to get
+a fresh circuit.
+
+### rclone mount not responsive
 ```bash
-curl --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip
+fusermount -uz /mnt/gdrive
+# Then re-run your command; it will auto-remount
 ```
 
-### Slow Download Speed
+### Verify downloaded file integrity
+```bash
+python3 -c "from utils import file_sha256; print(file_sha256('/path/to/file'))"
+```
 
-Tor network speed varies significantly. Typical speeds are 200-500 KB/s. If downloads are extremely slow:
+## Performance
 
-- Try restarting Tor to get a new circuit
-- Check your internet connection
-- Consider downloading during off-peak hours
-
-### Resume Not Working
-
-If resume functionality doesn't work:
-
-- Check that `.progress.json` exists in output directory
-- Verify file permissions on output directory
-- Ensure you're using the same output path
+| Metric | Typical | Notes |
+|--------|---------|-------|
+| Tor speed | 0.5–5 MB/s | Varies by circuit and hidden service load |
+| Resume overhead | < 1s | Reads `.progress.json`, sends Range header |
+| Memory usage | ~150 MB | Streaming downloads, no full file buffering |
 
 ## License
 
-This project is provided as-is for educational and legitimate use cases only.
+This project is provided as-is for educational and legitimate data recovery purposes only.

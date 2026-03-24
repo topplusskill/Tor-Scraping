@@ -42,8 +42,8 @@ class INCRansomParser(BaseParser):
     API_SERVER = "incbacg6bfwtrlzwdbqc55gsfl763s3twdtwhp27dzuik6s6rwdcityd.onion"
     CDN_SERVER = "inccdnlqq4jffxjrynglk755gsqkorblvutyeyw7uaiyscc5ueiyxnid.onion"
     
-    def __init__(self, session: requests.Session, cookies_file: str = None):
-        super().__init__(session)
+    def __init__(self, session: requests.Session, cookies_file: str = None, **kwargs):
+        super().__init__(session, **kwargs)
         self.disclosure = None
         self.cdn_url = f"http://{self.CDN_SERVER}"
         self.api_url = f"http://{self.API_SERVER}"
