@@ -2,100 +2,94 @@
 
 ## What This Tool Does
 
-Downloads all files from Tor hidden service directories (ransomware leak sites) with:
-- Automatic resume if connection drops
-- Skip already downloaded files
-- Real-time progress tracking
-- Works through Tor for anonymity
-- **Multi-site support**: Lockbit, DragonForce, INC Ransom
-- **Google Drive sync**: Download locally first, then sync to rclone-mounted GDrive
-- **Batch mode**: Download from all targets in parallel via `run_all.py`
-- **Centralized config**: All constants in `config.py`, shared helpers in `utils.py`
+Downloads all files from Tor ransomware leak sites with:
+- **Simple usage**: Just target name or URL
+- **Auto-detect**: Site type (Lockbit, DragonForce, INC Ransom)
+- **Resume support**: HTTP Range for large files (261GB+ tested)
+- **Progress bar**: Real-time speed and ETA
+- **Retry logic**: Up to 50 attempts per file
+- **Default output**: downloads/ folder in project
 
-**Download strategy**: Files are downloaded to local `/tmp/` first for speed,
-then copied to the rclone-mounted Google Drive folder. This avoids issues with
-mount instability during long Tor downloads.
+## Prerequisites
+
+```bash
+# Only Tor is required - no Python dependencies!
+sudo apt update && sudo apt install -y tor
+sudo systemctl enable --now tor
+```
+
+## Simple Usage
+
+### Use Target Name (Easiest)
+
+```bash
+# Just the target name from targets.json
+./dist/tor-downloader lockbit-kioti
+./dist/tor-downloader dragonforce-hartmann
+./dist/tor-downloader incransom-68001f58
+```
+
+**What happens:**
+- Downloads ALL files from the site
+- Saves to `downloads/` folder
+- Auto-resumes if interrupted
+- Shows progress bar with speed
+- **No Python installation needed!**
+
+### Use Full URL
+
+```bash
+./dist/tor-downloader "http://lockbit...onion/secret/.../company.com/"
+```
+
+### Download Specific Folder Only
+
+```bash
+./dist/tor-downloader dragonforce-hartmann --path "/Accounting"
+```
+
+### Custom Output Directory
+
+```bash
+./dist/tor-downloader lockbit-kioti -o ./my-data
+```
+
+## If You Want to Use Python Script
+
+```bash
+# Install dependencies first
+pip3 install -r requirements.txt
+
+# Then use Python script
+python3 tor_downloader.py lockbit-kioti
+```
 
 ## Supported Sites
 
-| Site | URL Pattern | Status |
-|------|-------------|--------|
-| **Lockbit** | `lockbit*.onion` | Fully supported |
-| **INC Ransom** | `incblog*.onion` | Fully supported (API-based) |
-| **DragonForce** | `dragonfor*.onion` | Fully supported (JWT auth) |
-
-Site type is auto-detected from URL, or can be specified manually with `--site-type`.
-
-## Installation
-
-```bash
-# Install Tor
-sudo apt install tor
-sudo systemctl start tor
-
-# Install Python dependencies
-pip3 install --break-system-packages requests beautifulsoup4 lxml PySocks
-
-# For Google Drive sync
-pip3 install --break-system-packages google-api-python-client google-auth google-auth-httplib2
-```
-
-## Basic Usage
-
-### Download entire directory
-
-```bash
-cd /home/ubuntu/CascadeProjects/tor-parser-demo
-
-python3 cli.py \
-  "http://lockbitwnklgh3lt6umrbiztgzl6qujtovdtcovdjhavepp7bpvcmfid.onion/secret/8aa7b9d90019fa9987bcf7a3c1cce477-e4045a91-e06d-3a8c-b658-2ec374f1337f/kioti.com/" \
-  -o /data/kioti
-```
-
-### What happens:
-1. Connects through Tor
-2. Crawls all directories recursively
-3. Downloads files as they are found
-4. Saves progress to `/data/kioti/.progress.json`
-5. Skips already downloaded files automatically
-
-### If download is interrupted:
-
-Just run the same command again. It will:
-- Load previous progress
-- Skip already downloaded files
-- Continue from where it stopped
-
-**No need for special resume flag** - it's automatic.
+| Site | Auto-Detect | Features |
+|------|-------------|----------|
+| **Lockbit** | ✅ | Apache directory listing |
+| **DragonForce** | ✅ | JWT auth + auto token refresh |
+| **INC Ransom** | ✅ | REST API + optional password |
 
 ## Real World Example
 
-### Typical Lockbit Site Structure
-```
-kioti.com/
-├── kioti.com.7z              # 261 GB archive (hard to download)
-├── kioti.com.7z-file-tree.txt # 65 MB file list
-├── kioti.com.7z.torrent       # 21 MB torrent
-└── unpack/                    # 200+ GB unpacked files (USE THIS)
-    ├── Accounting/
-    ├── HR/
-    ├── Finance/
-    └── ...
-```
+### Lockbit - Download Everything
 
-### Download Full Unpacked Directory (200+ GB)
 ```bash
-python3 cli.py \
-  "http://lockbitwnklgh3lt6umrbiztgzl6qujtovdtcovdjhavepp7bpvcmfid.onion/secret/8aa7b9d90019fa9987bcf7a3c1cce477-e4045a91-e06d-3a8c-b658-2ec374f1337f/kioti.com/unpack/" \
-  -o /data/kioti-leak \
-  --max-depth 10
-
-# This will download ALL files from unpack/ directory
-# Expected size: 200+ GB
-# Time: Several hours to days (depending on Tor speed)
+python3 tor_downloader.py lockbit-kioti
 ```
 
-### Download Specific Department Only
+Output:
+```
+Using target: lockbit-kioti
+URL: http://lockbit...onion/secret/.../kioti.com/
+Found 3 files
+[1/3] 33.3% | ✓0 ✗0 ⊘0 | 0.0B | 0.0B/s | ETA: 0s | Downloading kioti.com.7z
+kioti.com.7z [████████░░░░░░░░] 45.2% 118.3GB/261.7GB 2.5MB/s ETA: 15h23m
+```
+
+### DragonForce - Specific Folder
 ```bash
 # Only Accounting department (~20-50 GB)
 python3 cli.py \

@@ -31,78 +31,93 @@ with automatic resume, fault tolerance, and Google Drive synchronization via rcl
 ## Installation
 
 ```bash
-# System
-sudo apt update && sudo apt install -y tor rclone
+# Only Tor is required!
+sudo apt update && sudo apt install -y tor
 sudo systemctl enable --now tor
 
-# Python
-pip3 install requests beautifulsoup4 lxml PySocks
+# No Python dependencies needed - use the binary!
 ```
 
 ## Quick Start
 
-### Single target
+### Simple - Use Binary (Recommended)
 ```bash
-python3 cli.py "http://lockbit...onion/secret/.../company.com/" -o lockbit-data
+# Just the target name from targets.json
+./dist/tor-downloader lockbit-kioti
+./dist/tor-downloader dragonforce-hartmann
+./dist/tor-downloader incransom-68001f58
 ```
 
-### With Google Drive mount
+### Or Use Full URL
 ```bash
-python3 cli.py "http://lockbit...onion/secret/.../company.com/" \
-  -o lockbit-data \
-  --mount-gdrive
+./dist/tor-downloader "http://lockbit...onion/secret/.../company.com/"
 ```
 
-This downloads to `/tmp/tor-local-lockbit-data/` first, then copies each file
-to `/mnt/gdrive/lockbit-data/` after successful download.
-
-### Batch mode (all targets)
+### Download Specific Folder
 ```bash
-python3 run_all.py                  # start all targets in tmux
-python3 run_all.py --status         # check progress
-python3 run_all.py --only NAME      # run single target
-python3 run_all.py --stop           # stop all
+./dist/tor-downloader dragonforce-hartmann --path "/Accounting"
+```
+
+**Default behavior:**
+- Downloads to `downloads/` folder
+- Downloads ALL files (unlimited depth)
+- Auto-detects site type
+- Resume support enabled (HTTP Range)
+- Retry up to 50 times per file
+- **No Python installation needed!**
+
+### Alternative: Use Python Script
+```bash
+# If you prefer Python script
+pip3 install -r requirements.txt
+python3 tor_downloader.py lockbit-kioti
 ```
 
 ## CLI Reference
 
 ```
-python3 cli.py <URL> [options]
+./dist/tor-downloader <TARGET> [options]
 
 Required:
-  URL                        Target .onion URL
+  TARGET                     Target name from targets.json OR full .onion URL
 
 Options:
-  -o, --output DIR           Output directory (default: downloads)
-  --max-depth N              Max directory recursion depth (default: 10)
+  -o, --output DIR           Output directory (default: downloads/)
+  --path PATH                Specific folder path (default: download ALL)
+  --max-depth N              Max recursion depth (default: 999 = unlimited)
+  --site-type TYPE           auto | lockbit | dragonforce | incransom (default: auto)
   --tor-proxy URL            Tor SOCKS5 proxy (default: socks5h://127.0.0.1:9050)
-  --site-type TYPE           auto | lockbit | dragonforce | incransom
-  --password PASS            Password for protected disclosures (INC Ransom)
-  --cookies FILE             Cookies file for CAPTCHA bypass (JSON or Netscape)
-  --mount-gdrive             Download locally, then copy to rclone-mounted GDrive
+  --password PASS            Password for INC Ransom
+  --cookies FILE             Cookies file for INC Ransom CAPTCHA bypass
+  --resume                   Resume from previous run
+  --log-file FILE            Log file (default: download.log)
 ```
+
+Available targets in targets.json:
+- lockbit-kioti
+- dragonforce-hartmann
+- incransom-68001f58
 
 ## Architecture
 
 ```
-tor-parser-demo/
-├── cli.py                  # CLI entry point
-├── config.py               # Centralized constants and tunables
-├── utils.py                # Shared helpers (formatting, hashing, rate limiting)
-├── downloader.py           # Tor download engine with resume + retry
-├── cloud_sync.py           # rclone mount lifecycle management
-├── parser.py               # Legacy directory parser (backward compat)
-├── run_all.py              # Batch runner — parallel tmux sessions
-├── targets.json            # Target definitions for batch mode
+Tor-Scraping/
+├── dist/
+│   └── tor-downloader      # Standalone binary (18MB) - NO DEPENDENCIES!
+├── tor_downloader.py       # Main CLI script (if using Python)
+├── downloader.py           # HTTP Range resume engine
+├── config.py               # Constants and tunables
+├── utils.py                # Shared helpers
+├── targets.json            # Target definitions with simple names
 ├── parsers/
 │   ├── __init__.py         # Parser registry
 │   ├── base.py             # Abstract base class
-│   ├── lockbit.py          # Apache directory listing (skips unpack/)
-│   ├── dragonforce.py      # JWT auth + file server API
+│   ├── lockbit.py          # Apache directory listing
+│   ├── dragonforce.py      # JWT auth + auto token refresh
 │   └── incransom.py        # REST API + CDN downloads
-├── CHANGELOG.md            # Version history
-├── QUICK_START.md          # Hands-on guide
-└── requirements.txt        # Python dependencies
+├── README.md               # Full documentation
+├── QUICK_START.md          # Quick start guide
+└── requirements.txt        # Python dependencies (only if not using binary)
 ```
 
 ### Data Flow
