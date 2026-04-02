@@ -1,9 +1,34 @@
 {
   "targets": [
     {
-      "name": "dragonforce-hartmann-bau",
+      "name": "dragonforce-hartmann",
       "site_type": "dragonforce",
-      "url": "http://dragonforxxbp3awc7mzs5dkswrua3znqyx5roefmi4smjrsdi22xwqd.onion/hartmann-bau.ch"
+      "url": "http://dragonforxxbp3awc7mzs5dkswrua3znqyx5roefmi4smjrsdi22xwqd.onion/hartmann-bau.ch",
+      "note": "NEW server - working"
+    },
+    {
+      "name": "dragonforce-gasteiger",
+      "site_type": "dragonforce",
+      "url": "http://dragonforxxbp3awc7mzs5dkswrua3znqyx5roefmi4smjrsdi22xwqd.onion/gasteiger.design",
+      "note": "NEW server - working"
+    },
+    {
+      "name": "dragonforce-dynex",
+      "site_type": "dragonforce",
+      "url": "http://dragonforxxbp3awc7mzs5dkswrua3znqyx5roefmi4smjrsdi22xwqd.onion/dynextechnologies.com",
+      "note": "NEW server - working"
+    },
+    {
+      "name": "dragonforce-ceparts",
+      "site_type": "dragonforce",
+      "url": "http://dragonforxxbp3awc7mzs5dkswrua3znqyx5roefmi4smjrsdi22xwqd.onion/ceparts.com",
+      "note": "NEW server - working"
+    },
+    {
+      "name": "dragonforce-mullinax",
+      "site_type": "dragonforce",
+      "url": "http://dragonforxxbp3awc7mzs5dkswrua3znqyx5roefmi4smjrsdi22xwqd.onion/mullinaxford.com",
+      "note": "OLD server - OFFLINE (files unavailable)"
     },
     {
       "name": "incransom-68001f58",

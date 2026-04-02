@@ -48,6 +48,15 @@ sudo systemctl enable --now tor
 ./dist/tor-downloader dragonforce-hartmann --path "/Accounting"
 ```
 
+### Download ALL Companies from DragonForce
+
+```bash
+# Download all 421+ companies from DragonForce
+./dist/tor-downloader "http://dragonforxxbp3awc7mzs5dkswrua3znqyx5roefmi4smjrsdi22xwqd.onion/" --all
+
+# Each company will be saved in separate folder: downloads/company-name/
+```
+
 ### Custom Output Directory
 
 ```bash

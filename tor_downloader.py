@@ -177,6 +177,9 @@ Examples:
   # Or use full URL
   %(prog)s "http://lockbit...onion/secret/.../company.com/"
   
+  # Download ALL companies from DragonForce (421+ companies)
+  %(prog)s "http://dragonfor...onion/" --all
+  
   # Specific folder only
   %(prog)s dragonforce-hartmann --path "/Accounting"
   
@@ -206,6 +209,9 @@ Default behavior:
     parser.add_argument('-o', '--output', default='downloads', help='Output directory (default: downloads/)')
     parser.add_argument('--path', help='Specific folder path to download (default: download ALL files)')
     parser.add_argument('--max-depth', type=int, default=999, help='Max recursion depth (default: 999 = unlimited)')
+    parser.add_argument('--all', action='store_true', help='Download ALL companies from DragonForce main page')
+    parser.add_argument('--list-only', action='store_true', help='Only list companies, do not download')
+    parser.add_argument('--workers', type=int, default=1, help='Number of parallel workers (default: 1)')
     parser.add_argument('--site-type', choices=['auto', 'lockbit', 'dragonforce', 'incransom'],
                        default='auto', help='Site type (default: auto-detect)')
     parser.add_argument('--tor-proxy', default='socks5h://127.0.0.1:9050', 
@@ -284,6 +290,122 @@ Default behavior:
     
     # Set default path if not specified
     start_path = args.path if args.path else '/'
+    
+    # Handle --all flag for DragonForce
+    if args.all and site_type == 'dragonforce':
+        logger.info("Fetching ALL companies from DragonForce")
+        companies = parser_obj.get_all_companies(url)
+        
+        if not companies:
+            logger.error("No companies found")
+            return 1
+        
+        logger.info(f"Found {len(companies)} companies")
+        
+        # If --list-only, just output the list and exit
+        if args.list_only:
+            print(f"Found {len(companies)} companies:\n")
+            for i, company_url in enumerate(companies, 1):
+                company_name = company_url.rstrip('/').split('/')[-1]
+                print(f"{i}. {company_name}")
+                print(f"   URL: {company_url}")
+            
+            # Save to JSON for parallel processing
+            companies_file = output_dir / 'companies.json'
+            output_dir.mkdir(parents=True, exist_ok=True)
+            with open(companies_file, 'w') as f:
+                json.dump([{
+                    'name': c.rstrip('/').split('/')[-1],
+                    'url': c
+                } for c in companies], f, indent=2)
+            
+            print(f"\nSaved to: {companies_file}")
+            print(f"\nTo download in parallel, run:")
+            print(f"  cat {companies_file} | jq -r '.[].url' | xargs -P 8 -I {{}} python3 tor_downloader.py {{}} -o {output_dir}")
+            return 0
+        
+        print(f"\n{'='*80}")
+        print(f"DragonForce: Found {len(companies)} companies")
+        print(f"Output directory: {output_dir}")
+        print(f"Workers: {args.workers}")
+        print(f"{'='*80}\n")
+        
+        # Create downloader
+        downloader = TorDownloader(tor_proxy=args.tor_proxy)
+        
+        # Download each company
+        for i, company_url in enumerate(companies, 1):
+            company_name = company_url.rstrip('/').split('/')[-1]
+            company_output = output_dir / company_name
+            company_output.mkdir(parents=True, exist_ok=True)
+            
+            print(f"\n{'='*80}")
+            print(f"[{i}/{len(companies)}] Company: {company_name}")
+            print(f"URL: {company_url}")
+            print(f"Output: {company_output}")
+            print(f"{'='*80}\n")
+            
+            try:
+                # Crawl this company
+                logger.info(f"Crawling {company_name}...")
+                
+                # Extract token for this company
+                if not parser_obj._ensure_token(company_url):
+                    logger.error(f"Could not obtain token for {company_name}, skipping")
+                    continue
+                
+                # Crawl recursively
+                all_files = []
+                visited = set()
+                queue = [(start_path, 0)]
+                
+                while queue:
+                    path, depth = queue.pop(0)
+                    
+                    if path in visited or depth > args.max_depth:
+                        continue
+                    
+                    visited.add(path)
+                    
+                    result = parser_obj.parse_directory(company_url, main_url=company_url, path=path)
+                    all_files.extend(result['files'])
+                    
+                    for directory in result['directories']:
+                        dir_path = directory.get('path', directory) if isinstance(directory, dict) else directory
+                        if dir_path not in visited:
+                            queue.append((dir_path, depth + 1))
+                
+                if not all_files:
+                    logger.warning(f"No files found for {company_name}")
+                    continue
+                
+                logger.info(f"Found {len(all_files)} files for {company_name}")
+                
+                # Download files
+                for j, file_info in enumerate(all_files, 1):
+                    file_url = file_info['url']
+                    file_path = file_info.get('path', file_url.split('/')[-1])
+                    output_file = company_output / file_path
+                    
+                    output_file.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    success = downloader.download_file(
+                        file_url,
+                        output_file,
+                        resume=not args.no_resume_download
+                    )
+                    
+                    if not success:
+                        logger.error(f"Failed to download {file_path}")
+                
+                logger.info(f"Completed {company_name}")
+                
+            except Exception as e:
+                logger.error(f"Error processing {company_name}: {e}")
+                continue
+        
+        logger.info(f"Completed downloading all {len(companies)} companies")
+        return 0
     
     # Crawl or load file list
     files = []

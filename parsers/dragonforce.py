@@ -53,6 +53,39 @@ class DragonForceParser(BaseParser):
         self.main_site_url = None
         self.website = None
     
+    def get_all_companies(self, base_url: str = "http://dragonforxxbp3awc7mzs5dkswrua3znqyx5roefmi4smjrsdi22xwqd.onion/") -> List[str]:
+        """
+        Get list of all companies from DragonForce main page.
+        
+        Args:
+            base_url: DragonForce main page URL
+            
+        Returns:
+            List of company URLs
+        """
+        try:
+            self.logger.info(f"Fetching company list from {base_url}")
+            response = self.session.get(base_url, timeout=60)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.content, 'lxml')
+            companies = []
+            
+            # Find all links that look like company domains
+            for link in soup.find_all('a', href=True):
+                href = link['href']
+                # Company links are just domain names
+                if href and not href.startswith('http') and not href.startswith('#') and '/' in href:
+                    company_url = urljoin(base_url, href)
+                    companies.append(company_url)
+            
+            self.logger.info(f"Found {len(companies)} companies")
+            return companies
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get company list: {e}")
+            return []
+    
     def _extract_iframe_info(self, url: str) -> Optional[Dict]:
         """
         Extract file server URL and token from the main page iframe.
@@ -114,26 +147,84 @@ class DragonForceParser(BaseParser):
             self.logger.error(f"Failed to extract iframe info: {str(e)}")
             return None
     
+    def _test_file_server(self, file_server_url: str, token: str) -> bool:
+        """
+        Test if file server is accessible with given token.
+        
+        Args:
+            file_server_url: File server base URL
+            token: JWT token
+            
+        Returns:
+            True if server responds successfully
+        """
+        try:
+            test_url = f"{file_server_url}/?path=/&token={token}"
+            response = self.session.get(test_url, timeout=30)
+            
+            if response.status_code == 200:
+                self.logger.info(f"File server {file_server_url} is accessible")
+                return True
+            elif response.status_code == 403:
+                self.logger.warning(f"File server {file_server_url} returned 403 (wrong deployment)")
+                return False
+            else:
+                self.logger.warning(f"File server {file_server_url} returned {response.status_code}")
+                return False
+                
+        except Exception as e:
+            self.logger.warning(f"File server {file_server_url} not accessible: {e}")
+            return False
+    
     def _ensure_token(self, main_url: str) -> bool:
         """
         Ensure we have a valid (non-expired) token for the file server.
         Automatically refreshes token if it's about to expire.
+        Tests both old and new file servers if primary fails.
         """
         if self.token and self.file_server_url:
             if self.token_exp and time.time() < (self.token_exp - self.TOKEN_REFRESH_MARGIN):
-                return True
-            self.logger.info("Token expired or expiring soon, refreshing...")
+                # Token still valid, but verify server is accessible
+                if self._test_file_server(self.file_server_url, self.token):
+                    return True
+                else:
+                    self.logger.warning("Current file server not accessible, will try to refresh")
         
         info = self._extract_iframe_info(main_url)
         if not info:
             return False
         
-        self.file_server_url = info['file_server_url']
-        self.token = info['token']
-        self.deploy_uuid = info['deploy_uuid']
-        self.token_exp = info.get('token_exp', 0)
+        primary_server = info['file_server_url']
+        primary_token = info['token']
         
-        return True
+        # Test primary server from iframe
+        if self._test_file_server(primary_server, primary_token):
+            self.file_server_url = primary_server
+            self.token = primary_token
+            self.deploy_uuid = info['deploy_uuid']
+            self.token_exp = info.get('token_exp', 0)
+            self.logger.info(f"Using primary file server: {primary_server}")
+            return True
+        
+        # Primary server failed, try known alternative servers
+        self.logger.warning(f"Primary server {primary_server} not accessible, trying alternatives...")
+        
+        for alt_server in self.KNOWN_FILE_SERVERS:
+            alt_url = f"http://{alt_server}"
+            if alt_url == primary_server:
+                continue  # Already tried
+            
+            self.logger.info(f"Trying alternative server: {alt_server}")
+            if self._test_file_server(alt_url, primary_token):
+                self.file_server_url = alt_url
+                self.token = primary_token
+                self.deploy_uuid = info['deploy_uuid']
+                self.token_exp = info.get('token_exp', 0)
+                self.logger.info(f"Using alternative file server: {alt_server}")
+                return True
+        
+        self.logger.error("All file servers failed")
+        return False
     
     def parse_directory(self, url: str, **kwargs) -> Dict[str, List[str]]:
         """
