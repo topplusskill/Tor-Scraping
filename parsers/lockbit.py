@@ -1,4 +1,6 @@
 import logging
+import json
+import os
 from typing import List, Dict
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
@@ -11,17 +13,25 @@ class LockbitParser(BaseParser):
     """
     Parser for Lockbit ransomware leak sites.
     These sites use Apache-style directory listings with standard HTML structure.
+    
+    Changed behavior: Now downloads ONLY unpacked files from unpack/ directory.
+    Skips zip archives to avoid incomplete downloads.
     """
     
     SITE_NAME = "lockbit"
     
-    # Directories to skip — we only need archives, not unpacked contents
-    SKIP_DIRS = {'unpack/', 'unpack'}
+    # Only download from unpack directory, skip archives
+    PREFER_UNPACK = True
+    SKIP_ARCHIVES = True  # Skip .zip files
     
     def parse_directory(self, url: str, **kwargs) -> Dict[str, List[str]]:
         """
         Parse Apache-style directory listing.
-        Filters out navigation links and sorting parameters.
+        
+        New behavior:
+        - If we're at root level, only follow 'unpack/' directory
+        - Skip all .zip archives
+        - Download only unpacked files
         """
         try:
             response = self.session.get(url, timeout=60)
@@ -32,6 +42,9 @@ class LockbitParser(BaseParser):
             
             files = []
             directories = []
+            
+            # Check if we're in unpack directory
+            in_unpack = '/unpack/' in url or url.endswith('/unpack')
             
             for link in links:
                 href = link.get('href')
@@ -54,11 +67,21 @@ class LockbitParser(BaseParser):
                 
                 # Classify as directory or file based on trailing slash
                 if href.endswith('/'):
-                    if href in self.SKIP_DIRS:
-                        self.logger.info(f"Skipping directory: {href}")
-                        continue
-                    directories.append(full_url)
+                    # If not in unpack yet, only follow unpack directory
+                    if not in_unpack and self.PREFER_UNPACK:
+                        if 'unpack' in href.lower():
+                            self.logger.info(f"Following unpack directory: {href}")
+                            directories.append(full_url)
+                        else:
+                            self.logger.info(f"Skipping non-unpack directory: {href}")
+                    else:
+                        # Already in unpack, follow all subdirectories
+                        directories.append(full_url)
                 else:
+                    # Skip archive files if configured
+                    if self.SKIP_ARCHIVES and href.endswith('.zip'):
+                        self.logger.debug(f"Skipping archive: {href}")
+                        continue
                     files.append(full_url)
             
             return {'files': files, 'directories': directories}

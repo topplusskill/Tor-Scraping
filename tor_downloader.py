@@ -205,13 +205,15 @@ Default behavior:
     # Required arguments
     parser.add_argument('target', help='Target name from targets.json or full .onion URL')
     
-    # Optional arguments
-    parser.add_argument('-o', '--output', default='downloads', help='Output directory (default: downloads/)')
+    # Optional arguments (simplified - most have smart defaults)
+    parser.add_argument('-o', '--output', help='Output directory (default: downloads/<target-name>/)')
+    parser.add_argument('--workers', type=int, default=4, help='Number of parallel workers (default: 4)')
+    parser.add_argument('--max-depth', type=int, default=999, help='Max recursion depth (default: 999)')
+    
+    # Advanced options (rarely needed)
     parser.add_argument('--path', help='Specific folder path to download (default: download ALL files)')
-    parser.add_argument('--max-depth', type=int, default=999, help='Max recursion depth (default: 999 = unlimited)')
     parser.add_argument('--all', action='store_true', help='Download ALL companies from DragonForce main page')
     parser.add_argument('--list-only', action='store_true', help='Only list companies, do not download')
-    parser.add_argument('--workers', type=int, default=1, help='Number of parallel workers (default: 1)')
     parser.add_argument('--site-type', choices=['auto', 'lockbit', 'dragonforce', 'incransom'],
                        default='auto', help='Site type (default: auto-detect)')
     parser.add_argument('--tor-proxy', default='socks5h://127.0.0.1:9050', 
@@ -219,7 +221,7 @@ Default behavior:
     parser.add_argument('--password', help='Password for INC Ransom')
     parser.add_argument('--cookies', help='Cookies file for INC Ransom CAPTCHA bypass')
     parser.add_argument('--resume', action='store_true', help='Resume from previous run')
-    parser.add_argument('--log-file', default='download.log', help='Log file (default: download.log)')
+    parser.add_argument('--log-file', help='Log file (default: <output-dir>/download.log)')
     parser.add_argument('--no-resume-download', action='store_true', 
                        help='Disable HTTP Range resume')
     
@@ -228,6 +230,7 @@ Default behavior:
     # Resolve target name to URL if needed
     url = args.target
     site_type = args.site_type
+    target_name = args.target
     
     if not url.startswith('http'):
         # It's a target name, look it up
@@ -242,27 +245,46 @@ Default behavior:
             print(f"Error: Unknown target '{args.target}'")
             print(f"Available targets: {', '.join(targets.keys())}")
             return 1
+    else:
+        # Extract target name from URL for directory name
+        target_name = url.split('/')[-2] if url.endswith('/') else url.split('/')[-1]
+        target_name = target_name.replace('.onion', '').replace('.', '-')
+    
+    # Auto-create output directory relative to project if not specified
+    if args.output:
+        output_dir = Path(args.output)
+    else:
+        # Default: downloads/<target-name>/ relative to script location
+        script_dir = Path(__file__).parent
+        output_dir = script_dir / 'downloads' / target_name
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Output directory: {output_dir}")
+    
+    # Auto-create log file in output directory if not specified
+    if args.log_file:
+        log_file = args.log_file
+    else:
+        log_file = output_dir / 'download.log'
     
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(args.log_file),
+            logging.FileHandler(log_file),
             logging.StreamHandler(sys.stderr)
         ]
     )
     
     logger = logging.getLogger(__name__)
+    logger.info(f"Starting download: {target_name}")
+    logger.info(f"Output: {output_dir}")
     
     # Detect site type if still auto
     if site_type == 'auto':
         site_type = detect_site_type(url)
         logger.info(f"Auto-detected site type: {site_type}")
-    
-    # Create output directory
-    output_dir = Path(args.output)
-    output_dir.mkdir(parents=True, exist_ok=True)
     
     # File list cache
     file_list_cache = output_dir / '.file_list.json'
