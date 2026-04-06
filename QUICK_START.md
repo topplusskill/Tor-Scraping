@@ -60,8 +60,24 @@ sudo systemctl enable --now tor
 ### Custom Output Directory
 
 ```bash
+# Simple relative path
 ./dist/tor-downloader lockbit-kioti -o ./my-data
+
+# Absolute path
+python3 tor_downloader.py lockbit-kioti -o /home/user/downloads/lockbit
+
+# Path with spaces (use quotes)
+./dist/tor-downloader lockbit-kioti -o "/media/psf/FNI DW 1/downloads/lockbit-kioti"
+
+# Resume download in existing directory - continues from where it stopped
+python3 tor_downloader.py lockbit-kioti -o "/path/to/existing/lockbit-kioti"
 ```
+
+**Resume behavior:**
+- If output directory already contains files, download will automatically resume
+- Uses HTTP Range headers to continue partial downloads
+- Skips already downloaded files
+- Perfect for unstable Tor connections!
 
 ## If You Want to Use Python Script
 

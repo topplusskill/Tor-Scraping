@@ -58,11 +58,23 @@ sudo systemctl enable --now tor
 ./dist/tor-downloader dragonforce-hartmann --path "/Accounting"
 ```
 
+### Custom Output Directory
+```bash
+# Download to custom location (supports paths with spaces)
+./dist/tor-downloader lockbit-kioti -o "/media/psf/FNI DW 1/downloads/lockbit-kioti"
+
+# Resume download in existing directory
+python3 tor_downloader.py lockbit-kioti -o "/path/to/existing/folder"
+
+# Relative path
+./dist/tor-downloader dragonforce-hartmann -o "./my-downloads/hartmann"
+```
+
 **Default behavior:**
-- Downloads to `downloads/` folder
+- Downloads to `downloads/<target-name>/` folder relative to script
 - Downloads ALL files (unlimited depth)
 - Auto-detects site type
-- Resume support enabled (HTTP Range)
+- Resume support enabled (HTTP Range) - continues from where it stopped
 - Retry up to 50 times per file
 - **No Python installation needed!**
 

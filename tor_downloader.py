@@ -251,19 +251,63 @@ Default behavior:
         target_name = target_name.replace('.onion', '').replace('.', '-')
     
     # Auto-create output directory relative to project if not specified
+    # Supports custom paths including those with spaces (e.g., "/media/psf/FNI DW 1/downloads/")
     if args.output:
-        output_dir = Path(args.output)
+        # User-specified output directory - can be absolute or relative
+        # Properly handles paths with spaces when quoted in shell
+        output_dir = Path(args.output).expanduser().resolve()
+        
+        # Validate that parent directory exists and is writable
+        if not output_dir.parent.exists():
+            print(f"Error: Parent directory does not exist: {output_dir.parent}")
+            print(f"Please create it first or check the path")
+            return 1
+        
+        # Check write permissions
+        if output_dir.exists() and not os.access(output_dir, os.W_OK):
+            print(f"Error: No write permission for directory: {output_dir}")
+            return 1
     else:
         # Default: downloads/<target-name>/ relative to script location
         script_dir = Path(__file__).parent
         output_dir = script_dir / 'downloads' / target_name
     
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # Create directory if it doesn't exist, or use existing for resume
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        print(f"Error: Permission denied creating directory: {output_dir}")
+        return 1
+    except Exception as e:
+        print(f"Error creating directory: {e}")
+        return 1
+    
     print(f"Output directory: {output_dir}")
+    
+    # Check available disk space
+    import shutil
+    try:
+        stat = shutil.disk_usage(output_dir)
+        free_gb = stat.free / (1024**3)
+        total_gb = stat.total / (1024**3)
+        used_gb = stat.used / (1024**3)
+        print(f"Disk space: {free_gb:.1f} GB free / {total_gb:.1f} GB total ({used_gb:.1f} GB used)")
+        
+        if free_gb < 1.0:
+            print(f"Warning: Less than 1 GB free space available!")
+    except Exception as e:
+        print(f"Warning: Could not check disk space: {e}")
+    
+    # Check if resuming existing download
+    existing_files = [f for f in output_dir.glob('**/*') if f.is_file()]
+    if existing_files:
+        total_size = sum(f.stat().st_size for f in existing_files)
+        size_gb = total_size / (1024**3)
+        print(f"Found {len(existing_files)} existing files ({size_gb:.2f} GB) - will resume download")
     
     # Auto-create log file in output directory if not specified
     if args.log_file:
-        log_file = args.log_file
+        log_file = Path(args.log_file)
     else:
         log_file = output_dir / 'download.log'
     

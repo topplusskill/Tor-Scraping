@@ -48,9 +48,20 @@ class TorDownloader:
     def download_file(self, url: str, output_path: str, resume: bool = True) -> Tuple[bool, str]:
         """
         Download a single file with resume support.
+        
+        Supports resuming downloads in any directory, including:
+        - Custom paths with spaces (e.g., "/media/psf/FNI DW 1/downloads/")
+        - Network-mounted directories (Parallels shared folders, NFS, SMB)
+        - Relative and absolute paths
+        
+        Uses HTTP Range headers to continue partial downloads from where they stopped.
+        Perfect for unstable Tor connections that frequently drop.
+        
         Returns (success, message).
         """
         try:
+            # Create parent directories if they don't exist
+            # Works with any path including network mounts
             dir_path = os.path.dirname(output_path)
             if dir_path:
                 os.makedirs(dir_path, exist_ok=True)
@@ -58,9 +69,10 @@ class TorDownloader:
             existing_size = 0
             mode = 'wb'
             
+            # Check if file already exists and resume is enabled
             if resume and os.path.exists(output_path):
                 existing_size = os.path.getsize(output_path)
-                mode = 'ab'
+                mode = 'ab'  # Append mode to continue download
                 self.logger.info(f"Resuming from {_fmt_size(existing_size)}")
             
             headers = {}
@@ -100,23 +112,49 @@ class TorDownloader:
             
             downloaded = existing_size
             last_log = time.time()
+            start_time = time.time()
+            bytes_since_last_log = 0
+            
             with open(output_path, mode) as f:
                 for chunk in response.iter_content(chunk_size=self.CHUNK_SIZE):
                     if chunk:
                         f.write(chunk)
-                        downloaded += len(chunk)
-                        # Progress log every 30s
+                        chunk_size = len(chunk)
+                        downloaded += chunk_size
+                        bytes_since_last_log += chunk_size
+                        
+                        # Progress log every 30s with speed statistics
                         now = time.time()
                         if now - last_log > 30:
+                            elapsed = now - last_log
+                            speed = bytes_since_last_log / elapsed if elapsed > 0 else 0
+                            avg_speed = (downloaded - existing_size) / (now - start_time) if (now - start_time) > 0 else 0
+                            
                             pct = f" ({downloaded*100/total_size:.1f}%)" if total_size else ""
-                            self.logger.info(f"Progress: {_fmt_size(downloaded)}{pct}")
+                            eta = ""
+                            if total_size and avg_speed > 0:
+                                remaining = total_size - downloaded
+                                eta_seconds = remaining / avg_speed
+                                eta = f", ETA: {int(eta_seconds/60)}m"
+                            
+                            self.logger.info(
+                                f"Progress: {_fmt_size(downloaded)}{pct} | "
+                                f"Speed: {_fmt_size(speed)}/s (avg: {_fmt_size(avg_speed)}/s){eta}"
+                            )
                             last_log = now
+                            bytes_since_last_log = 0
             
             # Verify size if known
             if total_size and downloaded < total_size:
                 return False, f"Incomplete: {_fmt_size(downloaded)}/{_fmt_size(total_size)}"
             
-            self.logger.info(f"Download complete: {_fmt_size(downloaded)}")
+            # Final statistics
+            total_time = time.time() - start_time
+            avg_speed = (downloaded - existing_size) / total_time if total_time > 0 else 0
+            self.logger.info(
+                f"Download complete: {_fmt_size(downloaded)} in {int(total_time)}s "
+                f"(avg: {_fmt_size(avg_speed)}/s)"
+            )
             return True, "Success"
             
         except requests.exceptions.ConnectionError as e:
