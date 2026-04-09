@@ -63,16 +63,27 @@ class WorldLeaksParser(BaseParser):
                 self.base_api_url = f"{base_url}/api/companies/{self.company_id}"
                 self.logger.info(f"Company ID: {self.company_id}")
             
-            # Determine current path
-            current_path = kwargs.get('path', '/')
-            
-            # Build API URL for directory listing
-            if current_path == '/':
-                api_url = f"{self.base_api_url}/storages/dirs"
+            # Determine current path - extract from URL if it's an API URL
+            if '/storages/dirs/' in url:
+                # Extract path from API URL
+                # Format: .../api/companies/{id}/storages/dirs/{path}
+                path_part = url.split('/storages/dirs/')[-1]
+                from urllib.parse import unquote
+                current_path = '/' + unquote(path_part) if path_part else '/'
             else:
-                # URL encode the path
-                encoded_path = quote(current_path.lstrip('/'), safe='/')
-                api_url = f"{self.base_api_url}/storages/dirs/{encoded_path}"
+                current_path = kwargs.get('path', '/')
+            
+            # Use the URL directly if it's already an API URL
+            if url.startswith(self.base_api_url):
+                api_url = url
+            else:
+                # Build API URL for directory listing
+                if current_path == '/':
+                    api_url = f"{self.base_api_url}/storages/dirs"
+                else:
+                    # URL encode the path
+                    encoded_path = quote(current_path.lstrip('/'), safe='/')
+                    api_url = f"{self.base_api_url}/storages/dirs/{encoded_path}"
             
             self.logger.info(f"Fetching: {api_url}")
             
