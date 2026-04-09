@@ -40,6 +40,12 @@
       "site_type": "lockbit",
       "url": "http://lockbitwnklgh3lt6umrbiztgzl6qujtovdtcovdjhavepp7bpvcmfid.onion/secret/8aa7b9d90019fa9987bcf7a3c1cce477-e4045a91-e06d-3a8c-b658-2ec374f1337f/kioti.com/unpack/",
       "note": "Downloading unpacked files only (skip archives)"
+    },
+    {
+      "name": "worldleaks-myrtue",
+      "site_type": "worldleaks",
+      "url": "https://worldleaksartrjm3c6vasllvgacbi5u3mgzkluehrzhk2jz4taufuid.onion/companies/7731149748/storage",
+      "note": "Myrtue Medical Center Hospital - REST API based"
     }
   ]
 }

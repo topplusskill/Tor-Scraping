@@ -17,12 +17,14 @@ from .base import BaseParser
 from .lockbit import LockbitParser
 from .dragonforce import DragonForceParser
 from .incransom import INCRansomParser
+from .worldleaks import WorldLeaksParser
 
 __all__ = [
     "BaseParser",
     "LockbitParser",
     "DragonForceParser",
     "INCRansomParser",
+    "WorldLeaksParser",
     "get_parser",
     "list_parsers",
     "PARSER_REGISTRY",
@@ -34,6 +36,7 @@ PARSER_REGISTRY = {
     "lockbit": LockbitParser,
     "dragonforce": DragonForceParser,
     "incransom": INCRansomParser,
+    "worldleaks": WorldLeaksParser,
 }
 
 

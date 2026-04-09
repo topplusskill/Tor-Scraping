@@ -119,6 +119,8 @@ def detect_site_type(url: str) -> str:
         return 'dragonforce'
     elif 'incblog' in url_lower or 'incransom' in url_lower:
         return 'incransom'
+    elif 'worldleaks' in url_lower:
+        return 'worldleaks'
     
     return 'lockbit'  # Default
 
@@ -131,6 +133,9 @@ def create_parser(site_type: str, session: requests.Session, **kwargs):
         return DragonForceParser(session)
     elif site_type == 'incransom':
         return INCRansomParser(session, cookies_file=kwargs.get('cookies_file'))
+    elif site_type == 'worldleaks':
+        from parsers.worldleaks import WorldLeaksParser
+        return WorldLeaksParser(session)
     else:
         raise ValueError(f"Unknown site type: {site_type}")
 
@@ -214,7 +219,7 @@ Default behavior:
     parser.add_argument('--path', help='Specific folder path to download (default: download ALL files)')
     parser.add_argument('--all', action='store_true', help='Download ALL companies from DragonForce main page')
     parser.add_argument('--list-only', action='store_true', help='Only list companies, do not download')
-    parser.add_argument('--site-type', choices=['auto', 'lockbit', 'dragonforce', 'incransom'],
+    parser.add_argument('--site-type', choices=['auto', 'lockbit', 'dragonforce', 'incransom', 'worldleaks'],
                        default='auto', help='Site type (default: auto-detect)')
     parser.add_argument('--tor-proxy', default='socks5h://127.0.0.1:9050', 
                        help='Tor SOCKS5 proxy (default: socks5h://127.0.0.1:9050)')
