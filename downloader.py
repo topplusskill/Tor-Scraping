@@ -79,8 +79,10 @@ class TorDownloader:
             if existing_size > 0:
                 headers['Range'] = f'bytes={existing_size}-'
             
+            # Disable SSL verification for .onion sites (self-signed certs)
+            verify = not ('.onion' in url)
             response = self.session.get(
-                url, headers=headers, stream=True, timeout=self.timeout
+                url, headers=headers, stream=True, timeout=self.timeout, verify=verify
             )
             
             if response.status_code not in [200, 206]:

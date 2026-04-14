@@ -517,9 +517,22 @@ Default behavior:
             
             files = all_files
         else:
-            # Lockbit and INC Ransom use standard crawl
-            all_urls = parser_obj.crawl_recursive(url, max_depth=args.max_depth)
-            files = [{'url': file_url, 'path': file_url.split('/')[-1]} for file_url in all_urls]
+            # Standard crawl (Lockbit, INC Ransom, World Leaks, etc.)
+            all_items = parser_obj.crawl_recursive(url, max_depth=args.max_depth)
+            
+            # Normalize: items can be dicts (WorldLeaks) or strings (Lockbit)
+            files = []
+            for item in all_items:
+                if isinstance(item, dict):
+                    # Already a dict with url/path/name/size keys
+                    files.append(item)
+                else:
+                    # Plain URL string - convert to dict
+                    from urllib.parse import unquote
+                    files.append({
+                        'url': item,
+                        'path': unquote(item.split('/')[-1])
+                    })
         
         if not files:
             logger.error("No files found")
@@ -540,9 +553,17 @@ Default behavior:
             file_path = file_info.get('path', '')
             file_name = file_info.get('name', os.path.basename(file_path))
             download_url = parser_obj.get_download_url(file_info)
+        elif site_type == 'worldleaks':
+            # WorldLeaks files have full path from root (e.g., /MYRTUE.ORG/server/D/...)
+            file_path = file_info.get('path', '')
+            file_name = file_info.get('name', os.path.basename(file_path))
+            download_url = file_info.get('url', '')
         else:
             download_url = file_info.get('url', '')
-            file_name = file_info.get('path', download_url.split('/')[-1])
+            file_name = file_info.get('name', file_info.get('path', ''))
+            if not file_name:
+                from urllib.parse import unquote
+                file_name = unquote(download_url.split('/')[-1])
             file_path = file_name
         
         output_path = output_dir / file_path.lstrip('/')
